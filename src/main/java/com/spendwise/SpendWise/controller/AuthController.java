@@ -5,7 +5,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -63,7 +62,6 @@ public class AuthController {
             resp.put("user", mask(saved));
             return ResponseEntity.ok(resp);
         } catch (DataIntegrityViolationException dive) {
-            // Typically happens if DB still has a unique constraint on email, or (email, accountType)
             return ResponseEntity.status(HttpStatus.CONFLICT).body("Email/account type already exists (database constraint).");
         } catch (Exception ex) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Signup failed: " + ex.getMessage());
@@ -75,24 +73,23 @@ public class AuthController {
         String email = (String) body.get("email");
         String password = (String) body.get("password");
         String accountType = body.get("accountType") == null ? null : body.get("accountType").toString().toLowerCase();
-        if (email == null || password == null) return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Missing");
+
+        if (email == null || password == null) return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Missing credentials");
+
         String token = accountType == null ? auth.signin(email, password) : auth.signin(email, password, accountType);
         if (token == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid credentials");
+
         UserProfile u = auth.getByToken(token);
-        Map<String,Object> resp = new HashMap<>();
+        Map<String, Object> resp = new HashMap<>();
         resp.put("token", token);
         resp.put("user", mask(u));
         return ResponseEntity.ok(resp);
     }
 
     @PostMapping("/switch-account")
-    public ResponseEntity<?> switchAccount(@RequestHeader(value = "Authorization", required = false) String authHeader,
-                                           @RequestBody Map<String, Object> body) {
-        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Missing token");
-        }
-        UserProfile current = auth.getByToken(authHeader.substring("Bearer ".length()));
-        if (current == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid token");
+    public ResponseEntity<?> switchAccount(@RequestBody Map<String, Object> body) {
+        UserProfile current = auth.getCurrentUser();
+        if (current == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Missing or invalid token");
 
         String accountType = body.get("accountType") == null ? null : body.get("accountType").toString().toLowerCase();
         if (accountType == null) return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Missing account type");
@@ -108,16 +105,14 @@ public class AuthController {
     }
 
     @GetMapping("/me")
-    public ResponseEntity<?> me(@RequestHeader(value = "Authorization", required = false) String authHeader) {
-        if (authHeader == null || !authHeader.startsWith("Bearer ")) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Missing token");
-        String token = authHeader.substring("Bearer ".length());
-        UserProfile u = auth.getByToken(token);
-        if (u == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid token");
+    public ResponseEntity<?> me() {
+        UserProfile u = auth.getCurrentUser();
+        if (u == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Missing or invalid token");
         return ResponseEntity.ok(mask(u));
     }
 
-    private Map<String,Object> mask(UserProfile u) {
-        Map<String,Object> m = new HashMap<>();
+    private Map<String, Object> mask(UserProfile u) {
+        Map<String, Object> m = new HashMap<>();
         m.put("id", u.getId());
         m.put("name", u.getName());
         m.put("email", u.getEmail());

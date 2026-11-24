@@ -26,44 +26,40 @@ public class FinanceController {
     private final IncomeRepository incomes;
     private final ExpenseRepository expenses;
     private final InvestmentRepository investments;
-    private final AuthService auth;
     private final UserProfileRepository usersRepo;
     private final FinanceService financeService;
+    private final AuthService auth;
 
-    public FinanceController(IncomeRepository incomes, ExpenseRepository expenses, InvestmentRepository investments, AuthService auth, UserProfileRepository usersRepo, FinanceService financeService) {
+    public FinanceController(IncomeRepository incomes,
+                             ExpenseRepository expenses,
+                             InvestmentRepository investments,
+                             UserProfileRepository usersRepo,
+                             FinanceService financeService,
+                             AuthService auth) {
         this.incomes = incomes;
         this.expenses = expenses;
         this.investments = investments;
-        this.auth = auth;
         this.usersRepo = usersRepo;
         this.financeService = financeService;
-    }
-
-    private UserProfile requireUser(String authHeader) {
-        if (authHeader == null || !authHeader.startsWith("Bearer ")) return null;
-        String token = authHeader.substring("Bearer ".length());
-        return auth.getByToken(token);
+        this.auth = auth;
     }
 
     @GetMapping("/summary")
-    public ResponseEntity<?> summary(@RequestHeader(value = "Authorization", required = false) String authHeader) {
-        UserProfile u = requireUser(authHeader);
-        if (u == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Missing or invalid token");
+    public ResponseEntity<?> summary() {
+        UserProfile u = auth.getCurrentUser();
 
-        // incomes stored as records plus monthlyIncome values on profiles
         List<Income> inc = incomes.findByOwnerId(u.getId());
         List<Expense> exp = expenses.findByOwnerId(u.getId());
         List<Investment> inv = investments.findByOwnerId(u.getId());
 
         double incomesSum = inc.stream().mapToDouble(i -> i.getAmount() == null ? 0 : i.getAmount()).sum();
-        // include profile monthlyIncome for the current user and their members (if any)
         double profileMonthly = u.getMonthlyIncome() == null ? 0 : u.getMonthlyIncome();
         double membersMonthly = usersRepo.findByOwnerId(u.getId()).stream().mapToDouble(m -> m.getMonthlyIncome() == null ? 0 : m.getMonthlyIncome()).sum();
         double totalIncome = profileMonthly + membersMonthly + incomesSum;
         double totalExpense = exp.stream().mapToDouble(e -> e.getAmount() == null ? 0 : e.getAmount()).sum();
         double totalInvest = inv.stream().mapToDouble(iv -> iv.getAmount() == null ? 0 : iv.getAmount()).sum();
 
-        Map<String,Object> resp = new HashMap<>();
+        Map<String, Object> resp = new HashMap<>();
         resp.put("incomes", inc);
         resp.put("expenses", exp);
         resp.put("investments", inv);
@@ -75,43 +71,40 @@ public class FinanceController {
     }
 
     @GetMapping("/incomes")
-    public ResponseEntity<?> listIncomes(@RequestHeader(value = "Authorization", required = false) String authHeader) {
-        UserProfile u = requireUser(authHeader);
-        if (u == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Missing or invalid token");
+    public ResponseEntity<?> listIncomes() {
+        UserProfile u = auth.getCurrentUser();
         List<Income> inc = incomes.findByOwnerIdOrId(u.getId(), u.getId());
         return ResponseEntity.ok(inc);
     }
 
     @PutMapping("/incomes/{id}")
-    public ResponseEntity<?> updateIncome(@RequestHeader(value = "Authorization", required = false) String authHeader, @PathVariable Long id, @RequestBody Map<String,Object> body) {
-        UserProfile u = requireUser(authHeader);
-        if (u == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Missing or invalid token");
+    public ResponseEntity<?> updateIncome(@PathVariable Long id, @RequestBody Map<String, Object> body) {
+        UserProfile u = auth.getCurrentUser();
         Income inc = incomes.findById(id).orElse(null);
         if (inc == null) return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Not found");
         if (!u.getId().equals(inc.getOwnerId())) return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Not owner");
+
         if (body.get("amount") != null) inc.setAmount(Double.valueOf(body.get("amount").toString()));
-        if (body.get("description") != null) inc.setDescription((String)body.get("description"));
-        if (body.get("date") != null) inc.setDate(LocalDate.parse((String)body.get("date")));
+        if (body.get("description") != null) inc.setDescription((String) body.get("description"));
+        if (body.get("date") != null) inc.setDate(LocalDate.parse((String) body.get("date")));
         incomes.save(inc);
         return ResponseEntity.ok(inc);
     }
 
     @DeleteMapping("/incomes/{id}")
-    public ResponseEntity<?> deleteIncome(@RequestHeader(value = "Authorization", required = false) String authHeader, @PathVariable Long id) {
-        UserProfile u = requireUser(authHeader);
-        if (u == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Missing or invalid token");
+    public ResponseEntity<?> deleteIncome(@PathVariable Long id) {
+        UserProfile u = auth.getCurrentUser();
         Income inc = incomes.findById(id).orElse(null);
         if (inc == null) return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Not found");
         if (!u.getId().equals(inc.getOwnerId())) return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Not owner");
+
         incomes.deleteById(id);
-        return ResponseEntity.ok(Map.of("status","deleted"));
+        return ResponseEntity.ok(Map.of("status", "deleted"));
     }
 
     @PostMapping("/incomes")
-    public ResponseEntity<?> createIncome(@RequestHeader(value = "Authorization", required = false) String authHeader, @RequestBody Map<String,Object> body) {
-        UserProfile u = requireUser(authHeader);
-        if (u == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Missing or invalid token");
-
+    public ResponseEntity<?> createIncome(@RequestBody Map<String, Object> body) {
+        UserProfile u = auth.getCurrentUser();
         Double amount = body.get("amount") == null ? 0.0 : Double.valueOf(body.get("amount").toString());
         String description = (String) body.get("description");
         String dateStr = (String) body.get("date");
@@ -123,43 +116,41 @@ public class FinanceController {
     }
 
     @GetMapping("/expenses")
-    public ResponseEntity<?> listExpenses(@RequestHeader(value = "Authorization", required = false) String authHeader) {
-        UserProfile u = requireUser(authHeader);
-        if (u == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Missing or invalid token");
+    public ResponseEntity<?> listExpenses() {
+        UserProfile u = auth.getCurrentUser();
         List<Expense> exp = expenses.findByOwnerId(u.getId());
         return ResponseEntity.ok(exp);
     }
 
     @PutMapping("/expenses/{id}")
-    public ResponseEntity<?> updateExpense(@RequestHeader(value = "Authorization", required = false) String authHeader, @PathVariable Long id, @RequestBody Map<String,Object> body) {
-        UserProfile u = requireUser(authHeader);
-        if (u == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Missing or invalid token");
+    public ResponseEntity<?> updateExpense(@PathVariable Long id, @RequestBody Map<String, Object> body) {
+        UserProfile u = auth.getCurrentUser();
         Expense ex = expenses.findById(id).orElse(null);
         if (ex == null) return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Not found");
         if (!u.getId().equals(ex.getOwnerId())) return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Not owner");
+
         if (body.get("amount") != null) ex.setAmount(Double.valueOf(body.get("amount").toString()));
-        if (body.get("description") != null) ex.setDescription((String)body.get("description"));
-        if (body.get("date") != null) ex.setDate(LocalDate.parse((String)body.get("date")));
-        if (body.get("category") != null) ex.setCategory((String)body.get("category"));
+        if (body.get("description") != null) ex.setDescription((String) body.get("description"));
+        if (body.get("date") != null) ex.setDate(LocalDate.parse((String) body.get("date")));
+        if (body.get("category") != null) ex.setCategory((String) body.get("category"));
         expenses.save(ex);
         return ResponseEntity.ok(ex);
     }
 
     @DeleteMapping("/expenses/{id}")
-    public ResponseEntity<?> deleteExpense(@RequestHeader(value = "Authorization", required = false) String authHeader, @PathVariable Long id) {
-        UserProfile u = requireUser(authHeader);
-        if (u == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Missing or invalid token");
+    public ResponseEntity<?> deleteExpense(@PathVariable Long id) {
+        UserProfile u = auth.getCurrentUser();
         Expense ex = expenses.findById(id).orElse(null);
         if (ex == null) return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Not found");
         if (!u.getId().equals(ex.getOwnerId())) return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Not owner");
+
         expenses.deleteById(id);
-        return ResponseEntity.ok(Map.of("status","deleted"));
+        return ResponseEntity.ok(Map.of("status", "deleted"));
     }
 
     @PostMapping("/expenses")
-    public ResponseEntity<?> createExpense(@RequestHeader(value = "Authorization", required = false) String authHeader, @RequestBody Map<String,Object> body) {
-        UserProfile u = requireUser(authHeader);
-        if (u == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Missing or invalid token");
+    public ResponseEntity<?> createExpense(@RequestBody Map<String, Object> body) {
+        UserProfile u = auth.getCurrentUser();
         Double amount = body.get("amount") == null ? 0.0 : Double.valueOf(body.get("amount").toString());
         String description = (String) body.get("description");
         String dateStr = (String) body.get("date");
@@ -168,7 +159,7 @@ public class FinanceController {
 
         // If the current user is a group owner, use transactional financeService to create splits
         if ("group".equalsIgnoreCase(u.getAccountType())) {
-            Map<String,Object> res = financeService.createSplitExpense(u, amount, description, date);
+            Map<String, Object> res = financeService.createSplitExpense(u, amount, description, date);
             return ResponseEntity.ok(res);
         }
 
@@ -179,43 +170,40 @@ public class FinanceController {
     }
 
     @GetMapping("/investments")
-    public ResponseEntity<?> listInvestments(@RequestHeader(value = "Authorization", required = false) String authHeader) {
-        UserProfile u = requireUser(authHeader);
-        if (u == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Missing or invalid token");
+    public ResponseEntity<?> listInvestments() {
+        UserProfile u = auth.getCurrentUser();
         List<Investment> inv = investments.findByOwnerId(u.getId());
         return ResponseEntity.ok(inv);
     }
 
     @PutMapping("/investments/{id}")
-    public ResponseEntity<?> updateInvestment(@RequestHeader(value = "Authorization", required = false) String authHeader, @PathVariable Long id, @RequestBody Map<String,Object> body) {
-        UserProfile u = requireUser(authHeader);
-        if (u == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Missing or invalid token");
+    public ResponseEntity<?> updateInvestment(@PathVariable Long id, @RequestBody Map<String, Object> body) {
+        UserProfile u = auth.getCurrentUser();
         Investment iv = investments.findById(id).orElse(null);
         if (iv == null) return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Not found");
         if (!u.getId().equals(iv.getOwnerId())) return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Not owner");
+
         if (body.get("amount") != null) iv.setAmount(Double.valueOf(body.get("amount").toString()));
-        if (body.get("description") != null) iv.setDescription((String)body.get("description"));
-        if (body.get("date") != null) iv.setDate(LocalDate.parse((String)body.get("date")));
+        if (body.get("description") != null) iv.setDescription((String) body.get("description"));
+        if (body.get("date") != null) iv.setDate(LocalDate.parse((String) body.get("date")));
         investments.save(iv);
         return ResponseEntity.ok(iv);
     }
 
     @DeleteMapping("/investments/{id}")
-    public ResponseEntity<?> deleteInvestment(@RequestHeader(value = "Authorization", required = false) String authHeader, @PathVariable Long id) {
-        UserProfile u = requireUser(authHeader);
-        if (u == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Missing or invalid token");
+    public ResponseEntity<?> deleteInvestment(@PathVariable Long id) {
+        UserProfile u = auth.getCurrentUser();
         Investment iv = investments.findById(id).orElse(null);
         if (iv == null) return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Not found");
         if (!u.getId().equals(iv.getOwnerId())) return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Not owner");
+
         investments.deleteById(id);
-        return ResponseEntity.ok(Map.of("status","deleted"));
+        return ResponseEntity.ok(Map.of("status", "deleted"));
     }
 
     @PostMapping("/investments")
-    public ResponseEntity<?> createInvestment(@RequestHeader(value = "Authorization", required = false) String authHeader, @RequestBody Map<String,Object> body) {
-        UserProfile u = requireUser(authHeader);
-        if (u == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Missing or invalid token");
-
+    public ResponseEntity<?> createInvestment(@RequestBody Map<String, Object> body) {
+        UserProfile u = auth.getCurrentUser();
         Double amount = body.get("amount") == null ? 0.0 : Double.valueOf(body.get("amount").toString());
         String description = (String) body.get("description");
         String dateStr = (String) body.get("date");
@@ -227,9 +215,8 @@ public class FinanceController {
     }
 
     @GetMapping("/health-score")
-    public ResponseEntity<?> getHealthScore(@RequestHeader(value = "Authorization", required = false) String authHeader) {
-        UserProfile u = requireUser(authHeader);
-        if (u == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Missing or invalid token");
+    public ResponseEntity<?> getHealthScore() {
+        UserProfile u = auth.getCurrentUser();
 
         double profileMonthly = u.getMonthlyIncome() == null ? 0 : u.getMonthlyIncome();
         double membersMonthly = usersRepo.sumMonthlyIncomeByOwnerId(u.getId());
@@ -249,15 +236,12 @@ public class FinanceController {
             expenseRatio = (totalExpense / totalIncome) * 100;
         }
 
-        // Clamp ratios for display + scoring stability
         savingsRate = Math.min(100, Math.max(0, savingsRate));
         investmentRate = Math.min(100, Math.max(0, investmentRate));
         expenseRatio = Math.max(0, expenseRatio);
 
-        // Score calculation: 40% savings rate + 30% investment rate + 30% expense control
         double expenseControl = Math.min(100, Math.max(0, 100 - expenseRatio));
         double score;
-        // Brand-new account behavior: if there are no expenses/investments yet, start at 100.
         if (totalIncome > 0 && totalExpense == 0 && totalInvest == 0) {
             score = 100;
         } else {
@@ -285,10 +269,8 @@ public class FinanceController {
     }
 
     @GetMapping("/category-breakdown")
-    public ResponseEntity<?> getCategoryBreakdown(@RequestHeader(value = "Authorization", required = false) String authHeader) {
-        UserProfile u = requireUser(authHeader);
-        if (u == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Missing or invalid token");
-
+    public ResponseEntity<?> getCategoryBreakdown() {
+        UserProfile u = auth.getCurrentUser();
         List<Expense> exp = expenses.findByOwnerId(u.getId());
         Map<String, Double> categoryMap = new HashMap<>();
 
@@ -302,10 +284,8 @@ public class FinanceController {
     }
 
     @GetMapping("/export/csv")
-    public ResponseEntity<?> exportCSV(@RequestHeader(value = "Authorization", required = false) String authHeader) {
-        UserProfile u = requireUser(authHeader);
-        if (u == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Missing or invalid token");
-
+    public ResponseEntity<?> exportCSV() {
+        UserProfile u = auth.getCurrentUser();
         List<Income> inc = incomes.findByOwnerId(u.getId());
         List<Expense> exp = expenses.findByOwnerId(u.getId());
         List<Investment> inv = investments.findByOwnerId(u.getId());
@@ -352,10 +332,8 @@ public class FinanceController {
     }
 
     @GetMapping("/daily-spending")
-    public ResponseEntity<?> getDailySpending(@RequestHeader(value = "Authorization", required = false) String authHeader) {
-        UserProfile u = requireUser(authHeader);
-        if (u == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Missing or invalid token");
-
+    public ResponseEntity<?> getDailySpending() {
+        UserProfile u = auth.getCurrentUser();
         List<Expense> exp = expenses.findByOwnerId(u.getId());
         Map<String, Double> dailyMap = new HashMap<>();
 

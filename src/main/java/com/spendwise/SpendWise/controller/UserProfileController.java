@@ -3,6 +3,7 @@ package com.spendwise.SpendWise.controller;
 import java.util.List;
 import java.util.Map;
 
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -17,7 +18,6 @@ import com.spendwise.SpendWise.repository.UserProfileRepository;
 import com.spendwise.SpendWise.services.AuthService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.RequestHeader;
 
 @RestController
 @RequestMapping("/api/users")
@@ -25,30 +25,24 @@ public class UserProfileController {
 
     private final UserProfileRepository repo;
     private final AuthService auth;
+    private final PasswordEncoder passwordEncoder;
 
-    public UserProfileController(UserProfileRepository repo, AuthService auth) {
+    public UserProfileController(UserProfileRepository repo, AuthService auth, PasswordEncoder passwordEncoder) {
         this.repo = repo;
         this.auth = auth;
+        this.passwordEncoder = passwordEncoder;
     }
 
     @GetMapping
-    public ResponseEntity<?> list(@RequestHeader(value = "Authorization", required = false) String authHeader) {
-        if (authHeader == null || !authHeader.startsWith("Bearer ")) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Missing token");
-        String token = authHeader.substring("Bearer ".length());
-        UserProfile current = auth.getByToken(token);
-        if (current == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid token");
-
-        // For group owners return self + members (ownerId == current.id), for individuals return only self
-        java.util.List<UserProfile> result = repo.findByOwnerIdOrId(current.getId(), current.getId());
+    public ResponseEntity<?> list() {
+        UserProfile current = auth.getCurrentUser();
+        List<UserProfile> result = repo.findByOwnerIdOrId(current.getId(), current.getId());
         return ResponseEntity.ok(result);
     }
 
     @PostMapping
-    public ResponseEntity<?> create(@RequestHeader(value = "Authorization", required = false) String authHeader, @RequestBody UserProfile user) {
-        if (authHeader == null || !authHeader.startsWith("Bearer ")) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Missing token");
-        String token = authHeader.substring("Bearer ".length());
-        UserProfile current = auth.getByToken(token);
-        if (current == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid token");
+    public ResponseEntity<?> create(@RequestBody UserProfile user) {
+        UserProfile current = auth.getCurrentUser();
 
         // Only group accounts may add members
         if (!"group".equalsIgnoreCase(current.getAccountType())) {
@@ -59,18 +53,21 @@ public class UserProfileController {
         user.setOwnerId(current.getId());
         // ensure created users are 'individual' accounts by default
         if (user.getAccountType() == null) user.setAccountType("individual");
+
+        // Hash password if provided and not already hashed
+        if (user.getPassword() != null && !user.getPassword().isBlank()) {
+            if (!user.getPassword().startsWith("$2a$") && !user.getPassword().startsWith("$2b$")) {
+                user.setPassword(passwordEncoder.encode(user.getPassword()));
+            }
+        }
+
         UserProfile saved = repo.save(user);
         return ResponseEntity.ok(saved);
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<?> update(@RequestHeader(value = "Authorization", required = false) String authHeader,
-                                    @PathVariable Long id,
-                                    @RequestBody Map<String, Object> body) {
-        if (authHeader == null || !authHeader.startsWith("Bearer ")) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Missing token");
-        String token = authHeader.substring("Bearer ".length());
-        UserProfile current = auth.getByToken(token);
-        if (current == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid token");
+    public ResponseEntity<?> update(@PathVariable Long id, @RequestBody Map<String, Object> body) {
+        UserProfile current = auth.getCurrentUser();
         if (!current.getId().equals(id)) return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Not allowed");
 
         UserProfile user = repo.findById(id).orElse(null);
@@ -79,6 +76,10 @@ public class UserProfileController {
         if (body.get("name") != null) user.setName(body.get("name").toString());
         if (body.get("monthlyIncome") != null) user.setMonthlyIncome(Double.valueOf(body.get("monthlyIncome").toString()));
         if (body.get("profileImageUrl") != null) user.setProfileImageUrl(body.get("profileImageUrl").toString());
+
+        if (body.get("password") != null && !body.get("password").toString().isBlank()) {
+            user.setPassword(passwordEncoder.encode(body.get("password").toString()));
+        }
 
         if (body.get("email") != null) {
             String requestedEmail = body.get("email").toString();
@@ -97,12 +98,8 @@ public class UserProfileController {
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<?> delete(@RequestHeader(value = "Authorization", required = false) String authHeader,
-                                    @PathVariable Long id) {
-        if (authHeader == null || !authHeader.startsWith("Bearer ")) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Missing token");
-        String token = authHeader.substring("Bearer ".length());
-        UserProfile current = auth.getByToken(token);
-        if (current == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid token");
+    public ResponseEntity<?> delete(@PathVariable Long id) {
+        UserProfile current = auth.getCurrentUser();
         if (!current.getId().equals(id)) return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Not allowed");
 
         repo.deleteById(id);

@@ -13,42 +13,31 @@ import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/debts")
 public class DebtController {
 
     private final DebtRepository debts;
-    private final AuthService auth;
     private final UserProfileRepository users;
+    private final AuthService auth;
 
-    public DebtController(DebtRepository debts, AuthService auth, UserProfileRepository users) {
+    public DebtController(DebtRepository debts, UserProfileRepository users, AuthService auth) {
         this.debts = debts;
-        this.auth = auth;
         this.users = users;
-    }
-
-    private UserProfile requireUser(String authHeader) {
-        if (authHeader == null || !authHeader.startsWith("Bearer ")) return null;
-        String token = authHeader.substring("Bearer ".length());
-        return auth.getByToken(token);
+        this.auth = auth;
     }
 
     @GetMapping
-    public ResponseEntity<?> list(@RequestHeader(value = "Authorization", required = false) String authHeader) {
-        UserProfile u = requireUser(authHeader);
-        if (u == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Missing or invalid token");
-
+    public ResponseEntity<?> list() {
+        UserProfile u = auth.getCurrentUser();
         List<Debt> allDebts = debts.findPendingDebtsByUserId(u.getId());
         return ResponseEntity.ok(allDebts);
     }
 
     @PostMapping
-    public ResponseEntity<?> create(@RequestHeader(value = "Authorization", required = false) String authHeader, @RequestBody Map<String, Object> body) {
-        UserProfile u = requireUser(authHeader);
-        if (u == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Missing or invalid token");
-
+    public ResponseEntity<?> create(@RequestBody Map<String, Object> body) {
+        UserProfile u = auth.getCurrentUser();
         Long toUserId = body.get("toUserId") == null ? null : Long.valueOf(body.get("toUserId").toString());
         Double amount = body.get("amount") == null ? 0.0 : Double.valueOf(body.get("amount").toString());
         String description = (String) body.get("description");
@@ -61,13 +50,11 @@ public class DebtController {
     }
 
     @PutMapping("/{id}/settle")
-    public ResponseEntity<?> settle(@RequestHeader(value = "Authorization", required = false) String authHeader, @PathVariable Long id) {
-        UserProfile u = requireUser(authHeader);
-        if (u == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Missing or invalid token");
-
+    public ResponseEntity<?> settle(@PathVariable Long id) {
+        UserProfile u = auth.getCurrentUser();
         Debt debt = debts.findById(id).orElse(null);
         if (debt == null) return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Not found");
-        
+
         // Only the person owed or the person owing can settle
         if (!u.getId().equals(debt.getFromUserId()) && !u.getId().equals(debt.getToUserId())) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Not authorized");
@@ -79,23 +66,20 @@ public class DebtController {
     }
 
     @GetMapping("/summary")
-    public ResponseEntity<?> getSummary(@RequestHeader(value = "Authorization", required = false) String authHeader) {
-        UserProfile u = requireUser(authHeader);
-        if (u == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Missing or invalid token");
-
+    public ResponseEntity<?> getSummary() {
+        UserProfile u = auth.getCurrentUser();
         List<Debt> pendingDebts = debts.findPendingDebtsByUserId(u.getId());
-        
+
         double totalOwed = pendingDebts.stream()
                 .filter(d -> d.getFromUserId().equals(u.getId()))
                 .mapToDouble(d -> d.getAmount() == null ? 0 : d.getAmount())
                 .sum();
-        
+
         double totalOwedToYou = pendingDebts.stream()
                 .filter(d -> d.getToUserId().equals(u.getId()))
                 .mapToDouble(d -> d.getAmount() == null ? 0 : d.getAmount())
                 .sum();
 
-        // Group by person
         Map<Long, Double> owedByPerson = new HashMap<>();
         Map<Long, Double> owedToPerson = new HashMap<>();
 
@@ -122,13 +106,11 @@ public class DebtController {
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<?> delete(@RequestHeader(value = "Authorization", required = false) String authHeader, @PathVariable Long id) {
-        UserProfile u = requireUser(authHeader);
-        if (u == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Missing or invalid token");
-
+    public ResponseEntity<?> delete(@PathVariable Long id) {
+        UserProfile u = auth.getCurrentUser();
         Debt debt = debts.findById(id).orElse(null);
         if (debt == null) return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Not found");
-        
+
         if (!u.getId().equals(debt.getFromUserId()) && !u.getId().equals(debt.getToUserId())) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Not authorized");
         }

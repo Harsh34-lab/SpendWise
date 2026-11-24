@@ -29,25 +29,16 @@ public class BudgetController {
         this.auth = auth;
     }
 
-    private UserProfile requireUser(String authHeader) {
-        if (authHeader == null || !authHeader.startsWith("Bearer ")) return null;
-        String token = authHeader.substring("Bearer ".length());
-        return auth.getByToken(token);
-    }
-
     @GetMapping
-    public ResponseEntity<?> list(@RequestHeader(value = "Authorization", required = false) String authHeader) {
-        UserProfile u = requireUser(authHeader);
-        if (u == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Missing or invalid token");
+    public ResponseEntity<?> list() {
+        UserProfile u = auth.getCurrentUser();
         List<Budget> userBudgets = budgets.findByOwnerId(u.getId());
         return ResponseEntity.ok(userBudgets);
     }
 
     @PostMapping
-    public ResponseEntity<?> create(@RequestHeader(value = "Authorization", required = false) String authHeader, @RequestBody Map<String, Object> body) {
-        UserProfile u = requireUser(authHeader);
-        if (u == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Missing or invalid token");
-
+    public ResponseEntity<?> create(@RequestBody Map<String, Object> body) {
+        UserProfile u = auth.getCurrentUser();
         String category = (String) body.get("category");
         Double limitAmount = body.get("limitAmount") == null ? 0.0 : Double.valueOf(body.get("limitAmount").toString());
         String period = (String) body.getOrDefault("period", "monthly");
@@ -60,10 +51,8 @@ public class BudgetController {
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<?> update(@RequestHeader(value = "Authorization", required = false) String authHeader, @PathVariable Long id, @RequestBody Map<String, Object> body) {
-        UserProfile u = requireUser(authHeader);
-        if (u == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Missing or invalid token");
-
+    public ResponseEntity<?> update(@PathVariable Long id, @RequestBody Map<String, Object> body) {
+        UserProfile u = auth.getCurrentUser();
         Budget budget = budgets.findById(id).orElse(null);
         if (budget == null) return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Not found");
         if (!u.getId().equals(budget.getOwnerId())) return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Not owner");
@@ -79,10 +68,8 @@ public class BudgetController {
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<?> delete(@RequestHeader(value = "Authorization", required = false) String authHeader, @PathVariable Long id) {
-        UserProfile u = requireUser(authHeader);
-        if (u == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Missing or invalid token");
-
+    public ResponseEntity<?> delete(@PathVariable Long id) {
+        UserProfile u = auth.getCurrentUser();
         Budget budget = budgets.findById(id).orElse(null);
         if (budget == null) return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Not found");
         if (!u.getId().equals(budget.getOwnerId())) return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Not owner");
@@ -92,10 +79,8 @@ public class BudgetController {
     }
 
     @GetMapping("/status")
-    public ResponseEntity<?> getStatus(@RequestHeader(value = "Authorization", required = false) String authHeader) {
-        UserProfile u = requireUser(authHeader);
-        if (u == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Missing or invalid token");
-
+    public ResponseEntity<?> getStatus() {
+        UserProfile u = auth.getCurrentUser();
         LocalDate now = LocalDate.now();
         int currentMonth = now.getMonthValue();
         int currentYear = now.getYear();
