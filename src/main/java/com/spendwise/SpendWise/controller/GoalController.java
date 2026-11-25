@@ -27,25 +27,16 @@ public class GoalController {
         this.auth = auth;
     }
 
-    private UserProfile requireUser(String authHeader) {
-        if (authHeader == null || !authHeader.startsWith("Bearer ")) return null;
-        String token = authHeader.substring("Bearer ".length());
-        return auth.getByToken(token);
-    }
-
     @GetMapping
-    public ResponseEntity<?> list(@RequestHeader(value = "Authorization", required = false) String authHeader) {
-        UserProfile u = requireUser(authHeader);
-        if (u == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Missing or invalid token");
+    public ResponseEntity<?> list() {
+        UserProfile u = auth.getCurrentUser();
         List<Goal> userGoals = goals.findByOwnerId(u.getId());
         return ResponseEntity.ok(userGoals);
     }
 
     @PostMapping
-    public ResponseEntity<?> create(@RequestHeader(value = "Authorization", required = false) String authHeader, @RequestBody Map<String, Object> body) {
-        UserProfile u = requireUser(authHeader);
-        if (u == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Missing or invalid token");
-
+    public ResponseEntity<?> create(@RequestBody Map<String, Object> body) {
+        UserProfile u = auth.getCurrentUser();
         String name = (String) body.get("name");
         BigDecimal targetAmount = MoneyAmountUtil.parse(body.get("targetAmount"));
         BigDecimal currentAmount = MoneyAmountUtil.parse(body.get("currentAmount"));
@@ -59,10 +50,8 @@ public class GoalController {
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<?> update(@RequestHeader(value = "Authorization", required = false) String authHeader, @PathVariable Long id, @RequestBody Map<String, Object> body) {
-        UserProfile u = requireUser(authHeader);
-        if (u == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Missing or invalid token");
-
+    public ResponseEntity<?> update(@PathVariable Long id, @RequestBody Map<String, Object> body) {
+        UserProfile u = auth.getCurrentUser();
         Goal goal = goals.findById(id).orElse(null);
         if (goal == null) return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Not found");
         if (!u.getId().equals(goal.getOwnerId())) return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Not owner");
@@ -79,10 +68,8 @@ public class GoalController {
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<?> delete(@RequestHeader(value = "Authorization", required = false) String authHeader, @PathVariable Long id) {
-        UserProfile u = requireUser(authHeader);
-        if (u == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Missing or invalid token");
-
+    public ResponseEntity<?> delete(@PathVariable Long id) {
+        UserProfile u = auth.getCurrentUser();
         Goal goal = goals.findById(id).orElse(null);
         if (goal == null) return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Not found");
         if (!u.getId().equals(goal.getOwnerId())) return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Not owner");
@@ -92,10 +79,8 @@ public class GoalController {
     }
 
     @GetMapping("/achievements")
-    public ResponseEntity<?> getAchievements(@RequestHeader(value = "Authorization", required = false) String authHeader) {
-        UserProfile u = requireUser(authHeader);
-        if (u == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Missing or invalid token");
-
+    public ResponseEntity<?> getAchievements() {
+        UserProfile u = auth.getCurrentUser();
         List<Goal> completedGoals = goals.findByOwnerIdAndStatus(u.getId(), "completed");
         List<Goal> activeGoals = goals.findByOwnerIdAndStatus(u.getId(), "active");
 
