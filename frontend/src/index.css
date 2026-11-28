@@ -1572,3 +1572,48 @@ body,
     max-width: unset;
   }
 }
+
+/* OAuth Buttons */
+.oauth-row {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.oauth-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 18px;
+  border: 2px solid var(--oauth-color, var(--accent));
+  background: transparent;
+  color: var(--text-dark);
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.18s ease, color 0.18s ease, transform 0.12s ease;
+  flex: 1;
+  justify-content: center;
+  min-width: 90px;
+}
+
+.oauth-btn:hover {
+  background: var(--oauth-color, var(--accent));
+  color: #fff;
+  transform: translateY(-1px);
+}
+
+.oauth-icon {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.oauth-label {
+  letter-spacing: 0.02em;
+}
+
+[data-theme="dark"] .oauth-btn {
+  color: var(--text-dark);
+}
